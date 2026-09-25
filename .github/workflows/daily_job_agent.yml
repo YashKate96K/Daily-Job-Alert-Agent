@@ -1,0 +1,63 @@
+name: Daily Job Alert Agent
+
+# ==============================================================================
+# Triggers:
+# 1. Cron Schedule: Runs every day at 03:00 UTC (8:30 AM Indian Standard Time)
+# 2. Workflow Dispatch: Allows manual 1-click execution from GitHub Actions UI
+# ==============================================================================
+on:
+  schedule:
+    # 03:00 UTC = 08:30 IST (morning job digest)
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+# Permissions required to commit updated audit logs back to repo
+permissions:
+  contents: write
+
+jobs:
+  run-agent:
+    name: Run Autonomous Job Alert Agent
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out the repository code
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Python runtime environment
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      # Step 3: Install project dependencies
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Step 4: Execute the Autonomous Agent
+      # Environment variables are mapped directly from GitHub Actions Secrets
+      - name: Run Job Alert Agent
+        env:
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_MODEL: ${{ secrets.GROQ_MODEL || 'openai/gpt-oss-20b' }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER || 'smtp.gmail.com' }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT || '465' }}
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}
+        run: |
+          python job_agent.py
+
+      # Step 5: Persist run history by committing agent_runs.csv back to GitHub
+      - name: Commit and Push Run Audit Log
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add agent_runs.csv
+          git commit -m "chore(audit): log agent run [skip ci]" || echo "No changes to commit"
+          git push
